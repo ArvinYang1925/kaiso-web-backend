@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { registerSchema, loginSchema } from "../validator/userValidationSchemas";
 import { AppDataSource } from "../config/db";
 import { User } from "../entities/User";
 import { Student } from "../entities/Student";
@@ -9,45 +10,19 @@ import jwt from "jsonwebtoken";
 const userRepo = AppDataSource.getRepository(User);
 const studentRepo = AppDataSource.getRepository(Student);
 
-const pwdRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,12}$/;
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /**
  * POST /api/v1/auth/register
  */
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
-    const { name, email, password } = req.body as {
-      name?: string;
-      email?: string;
-      password?: string;
-    };
-
-    // 1. 驗證欄位
-    if (!name) {
-      res.status(400).json({ status: "failed", message: "姓名為必填" });
+    // 1. 使用 Zod 驗證輸入
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const err = parsed.error.errors[0];
+      res.status(400).json({ status: "failed", message: err.message });
       return;
     }
-    if (name.length >= 50) {
-      res.status(400).json({ status: "failed", message: "姓名長度需少於 50" });
-      return;
-    }
-    if (!email) {
-      res.status(400).json({ status: "failed", message: "Email 為必填" });
-      return;
-    }
-    if (!emailRegex.test(email as string)) {
-      res.status(400).json({ status: "failed", message: "email 不符合格式" });
-      return;
-    }
-    if (!password) {
-      res.status(400).json({ status: "failed", message: "密碼為必填" });
-      return;
-    }
-    if (!pwdRegex.test(password as string)) {
-      res.status(400).json({ status: "failed", message: "密碼不符合規則" });
-      return;
-    }
+    const { name, email, password } = parsed.data;
 
     // 2. 檢查是否已註冊
     const exists = await userRepo.findOneBy({ email });
@@ -105,20 +80,13 @@ export async function register(req: Request, res: Response, next: NextFunction) 
  */
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = req.body as {
-      email?: string;
-      password?: string;
-    };
-
-    // 1. 欄位檢查
-    if (!email || !password) {
+    // 1. 使用 Zod 驗證輸入
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
       res.status(401).json({ status: "failed", message: "帳號或密碼錯誤" });
       return;
     }
-    if (!emailRegex.test(email) || !pwdRegex.test(password)) {
-      res.status(401).json({ status: "failed", message: "帳號或密碼錯誤" });
-      return;
-    }
+    const { email, password } = parsed.data;
 
     // 2. 找 user
     const user = await userRepo.findOneBy({ email });
